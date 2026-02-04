@@ -1,41 +1,102 @@
-name: ESP-IDF Build
+# 工作流名称，在GitHub Actions页面显示
+name: ESP-IDF Build ESP32-S3 Minimal Test
 
+# 触发条件：push到任意分支、PR到任意分支
 on:
   push:
     branches: [ "*" ]
   pull_request:
     branches: [ "*" ]
 
+# 工作流任务（一个job：编译ESP32-S3固件）
 jobs:
-  build:
+  build-esp32s3:
+    # 运行环境：Ubuntu最新版（GitHub Actions默认，和ESP-IDF容器兼容）
     runs-on: ubuntu-latest
-    
+    # 任务名称
+    name: Build ESP32-S3 Firmware (ESP-IDF v5.1)
+
+    # 使用容器环境
+    container:
+      image: espressif/idf:v5.1
+
+    # 任务步骤
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        submodules: 'recursive'
-    
-    - name: Setup ESP-IDF
-      uses: espressif/esp-idf-ci-action@v1
-      with:
-        esp_idf_version: v5.1
-        target: esp32s3
-        path: .
-    
-    - name: Build
-      run: |
-        idf.py fullclean
-        idf.py build
-    
-    - name: Upload Build Artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: firmware
-        path: |
-          build/*.bin
-          build/*.elf
-          build/*.map
-          build/bootloader/bootloader.bin
-          build/partition_table/partition-table.bin
-        retention-days: 90
+      # 步骤1：拉取GitHub仓库的代码到构建环境
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
+
+      # 步骤2：初始化ESP-IDF环境并编译
+      - name: Initialize ESP-IDF and Build
+        shell: bash
+        run: |
+          # 初始化ESP-IDF环境 - 使用正确的路径
+          if [ -f /opt/esp/idf/export.sh ]; then
+            . /opt/esp/idf/export.sh
+            echo "ESP-IDF environment initialized from /opt/esp/idf/export.sh"
+          elif [ -f /opt/esp/entrypoint.sh ]; then
+            . /opt/esp/entrypoint.sh
+            echo "ESP-IDF environment initialized from /opt/esp/entrypoint.sh"
+          else
+            echo "ERROR: Could not find ESP-IDF initialization script"
+            find /opt -name "*.sh" | grep -i esp
+            exit 1
+          fi
+          
+          # 显示ESP-IDF版本信息
+          echo "ESP-IDF Path: $IDF_PATH"
+          echo "PATH: $PATH"
+          
+          # 进入工作目录
+          cd /github/workspace
+          
+          # 检查idf.py是否可用
+          if ! command -v idf.py &> /dev/null; then
+            echo "ERROR: idf.py command not found"
+            echo "Looking for idf.py..."
+            find /opt -name "idf.py" 2>/dev/null || true
+            exit 1
+          fi
+          
+          echo "idf.py found at: $(which idf.py)"
+          
+          # 设置目标芯片为ESP32-S3
+          echo "Setting target to ESP32-S3..."
+          idf.py set-target esp32s3
+          
+          # 复制默认配置（如果存在）
+          if [ -f sdkconfig.defaults ]; then
+            cp sdkconfig.defaults sdkconfig
+            echo "Copied sdkconfig.defaults to sdkconfig"
+          else
+            echo "No sdkconfig.defaults file found"
+          fi
+          
+          # 清理并编译
+          echo "Starting build process..."
+          idf.py fullclean
+          idf.py build
+          
+          # 显示编译完成信息
+          echo "========================================"
+          echo "Build completed successfully!"
+          echo "Build artifacts are in: $(pwd)/build"
+          echo "========================================"
+
+      # 步骤3：将编译后的固件文件作为构建产物上传，方便下载
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          # 产物名称，在GitHub Actions页面显示
+          name: esp32s3-mini-test-firmware
+          # 要上传的文件路径（build/下所有文件）
+          path: |
+            build/*.bin
+            build/*.elf
+            build/*.map
+            build/bootloader/bootloader.bin
+            build/partition_table/partition-table.bin
+          # 产物保留时间：90天（可自定义，如14天）
+          retention-days: 90
