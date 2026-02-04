@@ -1,0 +1,54 @@
+# 工作流名称，在GitHub Actions页面显示
+name: ESP-IDF Build ESP32-S3 Minimal Test
+
+# 触发条件：push到任意分支、PR到任意分支
+on:
+  push:
+    branches: [ "*" ]
+  pull_request:
+    branches: [ "*" ]
+
+# 工作流任务（一个job：编译ESP32-S3固件）
+jobs:
+  build-esp32s3:
+    # 运行环境：Ubuntu最新版（GitHub Actions默认，和ESP-IDF容器兼容）
+    runs-on: ubuntu-latest
+    # 任务名称
+    name: Build ESP32-S3 Firmware (ESP-IDF v5.1)
+
+    # 任务步骤
+    steps:
+      # 步骤1：拉取GitHub仓库的代码到构建环境
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: 'recursive' # 拉取子模块（ESP-IDF工程若有子模块需开启，本次最小工程无也可加）
+
+      # 步骤2：使用乐鑫官方ESP-IDF v5.1容器，执行编译命令
+      # 容器地址：https://hub.docker.com/r/espressif/idf（可换其他版本，如v4.4、v5.2）
+      - name: Build with ESP-IDF v5.1
+        uses: docker://espressif/idf:v5.1
+        with:
+          # 编译命令：进入工程根目录，执行idf.py set-target esp32s3（双重确认芯片）→ 全编译
+          entrypoint: /bin/bash
+          args: -c "cd /github/workspace && idf.py set-target esp32s3 && cp sdkconfig.defaults sdkconfig && idf.py fullclean && idf.py build"
+        # 环境变量：指定容器内的工作目录为GitHub代码目录
+        env:
+          IDF_PATH: /opt/esp/idf
+
+      # 步骤3：将编译后的固件文件作为构建产物上传，方便下载
+      # 编译产物默认在 build/ 目录下，包含bin/elf/map等文件
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          # 产物名称，在GitHub Actions页面显示
+          name: esp32s3-mini-test-firmware
+          # 要上传的文件路径（build/下所有文件）
+          path: |
+            build/*.bin
+            build/*.elf
+            build/*.map
+            build/bootloader/bootloader.bin
+            build/partition_table/partition-table.bin
+          # 产物保留时间：90天（可自定义，如14天）
+          retention-days: 90
