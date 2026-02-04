@@ -82,7 +82,87 @@ jobs:
           echo "Build artifacts are in: $(pwd)/build"
           echo "========================================"
 
-      # 步骤3：将编译后的固件文件作为构建产物上传，方便下载
+      # 步骤3：创建合并的二进制文件
+      - name: Create Merged Binary
+        shell: bash
+        run: |
+          . /opt/esp/idf/export.sh
+          cd /workspace
+          
+          # 获取项目名称（从CMakeLists.txt中提取）
+          PROJECT_NAME=$(grep -m1 "^project(" CMakeLists.txt | sed 's/project(\(.*\))/\1/' | tr -d '[:space:]')
+          if [ -z "$PROJECT_NAME" ]; then
+            # 如果提取失败，尝试其他方法
+            PROJECT_NAME=$(basename "$(pwd)")
+            echo "Warning: Could not extract project name from CMakeLists.txt, using directory name: $PROJECT_NAME"
+          fi
+          
+          echo "Project name: $PROJECT_NAME"
+          
+          # 检查必要的文件是否存在
+          echo "Checking for required files..."
+          BOOTLOADER_BIN="/workspace/build/bootloader/bootloader.bin"
+          PARTITION_BIN="/workspace/build/partition_table/partition-table.bin"
+          APP_BIN="/workspace/build/${PROJECT_NAME}.bin"
+          
+          if [ ! -f "$BOOTLOADER_BIN" ]; then
+            echo "Error: Bootloader binary not found: $BOOTLOADER_BIN"
+            exit 1
+          fi
+          
+          if [ ! -f "$PARTITION_BIN" ]; then
+            echo "Error: Partition table binary not found: $PARTITION_BIN"
+            exit 1
+          fi
+          
+          if [ ! -f "$APP_BIN" ]; then
+            echo "Error: Application binary not found: $APP_BIN"
+            # 尝试查找任何.bin文件
+            APP_BIN=$(find /workspace/build -name "*.bin" ! -name "bootloader.bin" ! -name "partition-table.bin" | head -1)
+            if [ -z "$APP_BIN" ]; then
+              echo "Error: No application binary found"
+              exit 1
+            fi
+            echo "Found alternative application binary: $APP_BIN"
+          fi
+          
+          # 方法1：使用esptool.py合并（推荐）
+          echo "Creating merged-binary.bin using esptool.py..."
+          python $IDF_PATH/components/esptool_py/esptool/esptool.py \
+            --chip esp32s3 \
+            merge_bin \
+            --flash_mode dio \
+            --flash_size 4MB \
+            --flash_freq 80m \
+            -o /workspace/build/merged-binary.bin \
+            0x1000 "$BOOTLOADER_BIN" \
+            0x8000 "$PARTITION_BIN" \
+            0x10000 "$APP_BIN"
+          
+          # 方法2：备用方法 - 如果esptool.py失败，使用cat命令
+          if [ ! -f "/workspace/build/merged-binary.bin" ] || [ ! -s "/workspace/build/merged-binary.bin" ]; then
+            echo "esptool.py method failed, trying alternative method..."
+            
+            # 创建空的merged文件
+            dd if=/dev/zero of=/workspace/build/merged-binary.bin bs=1M count=4
+            
+            # 使用dd命令将各个部分写入正确的位置
+            dd if="$BOOTLOADER_BIN" of=/workspace/build/merged-binary.bin bs=1 seek=$((0x1000)) conv=notrunc
+            dd if="$PARTITION_BIN" of=/workspace/build/merged-binary.bin bs=1 seek=$((0x8000)) conv=notrunc
+            dd if="$APP_BIN" of=/workspace/build/merged-binary.bin bs=1 seek=$((0x10000)) conv=notrunc
+          fi
+          
+          # 检查合并的文件
+          if [ -f "/workspace/build/merged-binary.bin" ]; then
+            echo "Successfully created merged-binary.bin"
+            echo "File size: $(ls -lh /workspace/build/merged-binary.bin | awk '{print $5}')"
+            echo "MD5 checksum: $(md5sum /workspace/build/merged-binary.bin | awk '{print $1}')"
+          else
+            echo "Error: Failed to create merged-binary.bin"
+            exit 1
+          fi
+
+      # 步骤4：将编译后的固件文件作为构建产物上传，方便下载
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -90,10 +170,11 @@ jobs:
           name: esp32s3-mini-test-firmware
           # 要上传的文件路径（build/下所有文件）
           path: |
-            /workspace/build/*.bin
-            /workspace/build/*.elf
-            /workspace/build/*.map
-            /workspace/build/bootloader/bootloader.bin
-            /workspace/build/partition_table/partition-table.bin
+            # /workspace/build/*.bin
+            # /workspace/build/*.elf
+            # /workspace/build/*.map
+            # /workspace/build/bootloader/bootloader.bin
+            # /workspace/build/partition_table/partition-table.bin
+            /workspace/build/merged-binary.bin
           # 产物保留时间：90天（可自定义，如14天）
           retention-days: 90
