@@ -1,0 +1,36 @@
+# 核心：指定目标芯片为ESP32-S3
+CONFIG_IDF_TARGET_ESP32S3=y
+CONFIG_ESP32S3_DEFAULT_CPU_FREQ_240=y
+
+# 串口配置：UART0，波特率115200
+CONFIG_ESP_CONSOLE_UART_NUM=0
+CONFIG_ESP_CONSOLE_UART_BAUDRATE=115200
+
+# 禁用无用功能，减小固件（最小系统测试）
+CONFIG_BT_ENABLED=n
+CONFIG_WIFI_ENABLED=n
+CONFIG_MBEDTLS_ENABLED=n
+CONFIG_ESP32S3_UNIVERSAL_MAC_ADDRESSES=1
+
+# 启用日志，方便调试
+CONFIG_LOG_DEFAULT_LEVEL=INFO
+CONFIG_CONSOLE_UART_DEFAULT=y
+
+# ====================== SPRAM 硬件配置 ======================
+# 强制使能SPRAM（适配有SPRAM的模组，无SPRAM的模组会自动忽略，不影响编译）
+CONFIG_SPIRAM_SUPPORT=y
+# SPRAM 读写模式：QUAD模式（4线，ESP32-S3 SPRAM默认/最优模式，比SPI模式快1倍）
+CONFIG_SPIRAM_MODE_QUAD=y
+# 禁用SPI模式（避免自动降级，强制使用QUAD）
+# CONFIG_SPIRAM_MODE_SPI is not set
+
+# SPRAM 时钟速度（ESP32-S3支持3种，根据模组硬件匹配，优先选80MHz）
+# 可选：40MHz/60MHz/80MHz，80MHz是最高速，主流2MB/8MB SPRAM模组均支持
+CONFIG_SPIRAM_SPEED_40M=y
+# 启用SPRAM作为堆内存（将SPRAM加入系统默认堆，代码可直接分配SPRAM内存）
+CONFIG_SPIRAM_USE_CAPS_ALLOC=y
+# 允许将未初始化的全局变量放入SPRAM（减小片内DRAM占用，最小系统优化）
+CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY=y
+# 禁用SPRAM调试（减小固件，最小系统测试用）
+CONFIG_SPIRAM_DEBUG=n
+# ============================================================
