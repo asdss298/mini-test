@@ -30,9 +30,10 @@ jobs:
 
       # 步骤2：初始化ESP-IDF环境并编译
       - name: Initialize ESP-IDF and Build
+        shell: bash -e {0}
         run: |
           # 初始化ESP-IDF环境
-          source /opt/esp/idf/export.sh
+          . /opt/esp/idf/export.sh
           
           # 进入工作目录
           cd /github/workspace
